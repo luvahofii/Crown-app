@@ -1,0 +1,234 @@
+<!DOCTYPE html><html lang="sw">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CROWN</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #fff; color: #c00000; }
+    header { background: #c00000; color: #fff; padding: 1rem; text-align: center; font-size: 1.5rem; }
+    .container { padding: 1rem; }
+    .button { background: #c00000; color: #fff; border: none; padding: 1rem; margin: 0.5rem 0; width: 100%; border-radius: 5px; font-size: 1rem; cursor: pointer; }
+    .button:hover { background: #a00000; }
+    input, select { width: 100%; padding: 0.7rem; margin: 0.5rem 0; border: 1px solid #c00000; border-radius: 5px; }
+    .hidden { display: none; }
+    nav { display: flex; justify-content: space-around; background: #fff; border-top: 1px solid #c00000; position: fixed; bottom: 0; width: 100%; padding: 0.5rem 0; }
+    nav button { background: none; border: none; color: #c00000; font-weight: bold; cursor: pointer; }
+    .product-list, .report { margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #c00000; padding: 0.5rem; text-align: left; }
+  </style>
+</head>
+<body><header>CROWN</header><div class="container" id="auth">
+  <h2>Karibu kwenye CROWN</h2>
+  <input type="text" id="loginEmail" placeholder="Barua pepe">
+  <input type="password" id="loginPassword" placeholder="Nenosiri">
+  <button class="button" onclick="login()">Ingia</button>
+  <p>Huna akaunti? <a href="#" onclick="showSignup()">Jisajili</a></p>
+</div><div class="container hidden" id="signup">
+  <h2>Sajili Akaunti</h2>
+  <input type="text" id="signupEmail" placeholder="Barua pepe">
+  <input type="password" id="signupPassword" placeholder="Nenosiri">
+  <button class="button" onclick="signup()">Sajili</button>
+  <p>Tayari una akaunti? <a href="#" onclick="showLogin()">Ingia</a></p>
+</div><div class="container hidden" id="home">
+  <h2>Mauzo ya Leo</h2>
+  <p id="sales">Tsh 0</p>
+  <h2>Gharama za Leo</h2>
+  <p id="expenses">Tsh 0</p>
+  <button class="button" onclick="showSaleForm()">Rekodi Mauzo</button>
+  <button class="button" onclick="showExpenseForm()">Ongeza Gharama</button>
+  <button class="button" onclick="showProducts()">Orodha ya Bidhaa</button>
+</div><div class="container hidden" id="formArea"></div>
+<div class="container hidden" id="productsArea">
+  <h2>Orodha ya Bidhaa</h2>
+  <table id="productTable"></table>
+  <button class="button" onclick="addProductForm()">+ Ongeza Bidhaa</button>
+</div>
+<div class="container hidden" id="reportsArea">
+  <h2>Ripoti</h2>
+  <select id="reportType" onchange="drawChart()">
+    <option value="week">Wiki</option>
+    <option value="month">Mwezi</option>
+  </select>
+  <div id="reportContent">
+    <canvas id="salesChart" style="max-height:300px;"></canvas>
+    <p id="summary"></p>
+  </div>
+  <button class="button" onclick="downloadPDF()">Pakua kama PDF</button>
+  <button class="button" onclick="shareWhatsApp()">Tuma kwa WhatsApp</button>
+</div><nav>
+  <button onclick="navigate('home')">Nyumbani</button>
+  <button onclick="navigate('reportsArea')">Ripoti</button>
+</nav><script>
+let sales = 0, expenses = 0;
+let products = JSON.parse(localStorage.getItem('products')) || [];
+let salesData = JSON.parse(localStorage.getItem('salesData')) || [];
+let chart;
+
+function navigate(section) {
+  document.querySelectorAll('.container').forEach(div => div.classList.add('hidden'));
+  document.getElementById(section).classList.remove('hidden');
+}
+
+function showSaleForm() {
+  navigate('formArea');
+  let productOptions = products.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+  document.getElementById('formArea').innerHTML = `
+    <h2>Rekodi Mauzo</h2>
+    <select id="product">${productOptions}</select>
+    <input type="number" id="quantity" placeholder="Kiasi">
+    <input type="number" id="price" placeholder="Bei kwa Kipengee">
+    <select id="payment">
+      <option value="Cash">Taslimu</option>
+      <option value="M-Pesa">M-Pesa</option>
+      <option value="Tigo Pesa">Tigo Pesa</option>
+      <option value="Airtel">Airtel</option>
+    </select>
+    <input type="text" id="customer" placeholder="Mteja (Hiari)">
+    <button class="button" onclick="recordSale()">Hifadhi</button>
+  `;
+}
+
+function recordSale() {
+  let price = parseFloat(document.getElementById('price').value);
+  let quantity = parseInt(document.getElementById('quantity').value);
+  if (!isNaN(price) && !isNaN(quantity)) {
+    let total = price * quantity;
+    sales += total;
+    salesData.push({ product: document.getElementById('product').value, amount: total });
+    updateDisplay();
+    saveData();
+    navigate('home');
+  }
+}
+
+function showExpenseForm() {
+  navigate('formArea');
+  document.getElementById('formArea').innerHTML = `
+    <h2>Ongeza Gharama</h2>
+    <input type="text" id="expenseType" placeholder="Aina ya Gharama">
+    <input type="number" id="expenseAmount" placeholder="Kiasi (Tsh)">
+    <button class="button" onclick="recordExpense()">Hifadhi</button>
+  `;
+}
+
+function recordExpense() {
+  let amount = parseFloat(document.getElementById('expenseAmount').value);
+  if (!isNaN(amount)) {
+    expenses += amount;
+    updateDisplay();
+    saveData();
+    navigate('home');
+  }
+}
+
+function showProducts() {
+  navigate('productsArea');
+  let table = `<tr><th>Bidhaa</th><th>Kiasi</th></tr>`;
+  products.forEach(p => table += `<tr><td>${p.name}</td><td>${p.stock}</td></tr>`);
+  document.getElementById('productTable').innerHTML = table;
+}
+
+function addProductForm() {
+  let name = prompt('Jina la Bidhaa:');
+  let stock = prompt('Kiasi:');
+  if (name && stock) {
+    products.push({ name, stock });
+    saveData();
+    showProducts();
+  }
+}
+
+function updateDisplay() {
+  document.getElementById('sales').innerText = `Tsh ${sales}`;
+  document.getElementById('expenses').innerText = `Tsh ${expenses}`;
+}
+
+function saveData() {
+  localStorage.setItem('sales', sales);
+  localStorage.setItem('expenses', expenses);
+  localStorage.setItem('products', JSON.stringify(products));
+  localStorage.setItem('salesData', JSON.stringify(salesData));
+}
+
+function drawChart() {
+  let ctx = document.getElementById('salesChart').getContext('2d');
+  if(chart) chart.destroy();
+  let labels = salesData.map(x => x.product);
+  let amounts = salesData.map(x => x.amount);
+  let type = document.getElementById('reportType').value;
+  if(type === 'week') {
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Mauzo kwa Wiki', data: amounts, backgroundColor: '#c00000' }] },
+      options: { scales: { y: { beginAtZero: true } } }
+    });
+  } else {
+    chart = new Chart(ctx, {
+      type: 'pie',
+      data: { labels, datasets: [{ label: 'Mauzo kwa Mwezi', data: amounts, backgroundColor: ['#c00000', '#ff6666', '#ff9999', '#ffe6e6'] }] }
+    });
+  }
+  document.getElementById('summary').innerText = `Jumla ya Mauzo: Tsh ${sales} | Jumla ya Gharama: Tsh ${expenses}`;
+}
+
+function downloadPDF() {
+  var element = document.getElementById('reportContent');
+  html2pdf().from(element).save('ripoti-crown.pdf');
+}
+
+function shareWhatsApp() {
+  let message = `Mauzo ya Leo: Tsh ${sales}\nGharama: Tsh ${expenses}`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(message)}`);
+}
+
+// Login and Signup logic
+function login() {
+  const email = document.getElementById('loginEmail').value;
+  const password = document.getElementById('loginPassword').value;
+  const user = JSON.parse(localStorage.getItem(email));
+  if (user && user.password === password) {
+    navigate('home');
+  } else {
+    alert('Barua pepe au nenosiri si sahihi');
+  }
+}
+
+function signup() {
+  const email = document.getElementById('signupEmail').value;
+  const password = document.getElementById('signupPassword').value;
+  if (email && password) {
+    localStorage.setItem(email, JSON.stringify({ password }));
+    alert('Umefanikiwa kujisajili! Sasa ingia.');
+    showLogin();
+  }
+}
+
+function showSignup() {
+  document.getElementById('auth').classList.add('hidden');
+  document.getElementById('signup').classList.remove('hidden');
+}
+
+function showLogin() {
+  document.getElementById('signup').classList.add('hidden');
+  document.getElementById('auth').classList.remove('hidden');
+}
+
+// Initialize
+sales = parseFloat(localStorage.getItem('sales')) || 0;
+expenses = parseFloat(localStorage.getItem('expenses')) || 0;
+updateDisplay();
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js')
+      .then(reg => console.log('Service Worker registered:', reg))
+      .catch(err => console.log('Service Worker registration failed:', err));
+  });
+}
+</script></body>
+</html>
